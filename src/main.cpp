@@ -1,6 +1,7 @@
 #include <Arduino.h>
-#include <Wire.h>
+#include <ArduinoLog.h>
 #include <LSM303.h>
+#include <Wire.h>
 
 #define PIN_MAG_PLUS 23
 #define PIN_MAG_MINUS 19
@@ -27,10 +28,17 @@ void autoCalibrate() {
     compass.m_max.z = max(compass.m_max.z, compass.m.z);
 }
 
+// This is for logger to end every log with \n
+void _printNewline(Print* _logOutput) {
+  _logOutput->print('\n');
+}
+
 void setup() {
     Serial.begin(115200);
-    Serial.println("Initializing Hatlight...");
-    Serial.println("Init compass...");
+    Log.begin(LOG_LEVEL_VERBOSE, &Serial, true);
+    Log.setSuffix(_printNewline);
+    Log.notice("Initializing Hatlight...");
+    Log.verbose("Init compass...");
     pinMode(PIN_MAG_MINUS, OUTPUT);
     pinMode(PIN_MAG_PLUS, OUTPUT);
     digitalWrite(PIN_MAG_MINUS, 0);
@@ -41,9 +49,13 @@ void setup() {
     compass.init(LSM303::device_DLHC);
     compass.enableDefault();
     compass.read();
-    Serial.println("Compass working");
+    if (compass.timeoutOccurred()) {
+        Log.fatal("Compass not working, got timeout when trying to .read() !");
+    } else {
+        Log.trace("Compass working");
+    }
 
-    Serial.println("Going to loop...");
+    Log.notice("Setup done, ging to loop...");
 }
 
 void loop() {
