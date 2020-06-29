@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoLog.h>
+#include <FastLED.h>
 #include <LSM303.h>
 #include <Wire.h>
 
@@ -10,6 +11,8 @@
 #define PIN_LED 4
 #define NUM_LEDS 7
 
+CRGB leds[NUM_LEDS];
+
 LSM303 compass;
 
 /*
@@ -18,6 +21,18 @@ Run this function in loop and spin hat in all directions to get min/max
 magnetometer values In future, it would be nice to save those values in eeprom
 and only update them once in a while
 */
+
+void lightOneLed(int ledIndex, CRGB oneColor = CRGB::White,
+                 CRGB restColor = CRGB::Black) {
+    for (int x = 0; x < NUM_LEDS; x++) {
+        if (x == ledIndex) {
+            leds[x] = oneColor;
+            continue;
+        }
+        leds[x] = restColor;
+    }
+    FastLED.show();
+}
 
 LSM303::vector<int16_t> _janusz_calibration_min = {-578, -586, -425},
                         _janusz_calibration_max = {613, 608, 542};
@@ -38,8 +53,8 @@ void autoCalibrate() {
 // ...
 // few tears and mental breakdowns later:
 // Does this...
-// Does this just FUCKING WORK?????? 
-float getHeadingAzimuth(){
+// Does this just FUCKING WORK??????
+float getHeadingAzimuth() {
     compass.read();
     // This is basically copy of what is in the library, but cut off few things
 
@@ -51,14 +66,37 @@ float getHeadingAzimuth(){
 
     LSM303::vector<float> E;
     LSM303::vector_cross(&temp_m, &compass.a, &E);
-    
+
     float head = atan2(E.y, E.z) * 180 / PI;
     head += 180;
-    if (head < 0){
+    if (head < 0) {
         head += 360;
     }
 
     return head;
+}
+
+
+// This is just to show that the compass is fucking working
+// this will be moved to some fancy class or some shit, i just want to show it
+int targetAzimuthToLed(float targetAzimuth) {
+    float current = getHeadingAzimuth();
+    float diff = targetAzimuth - current;
+    if (diff < -180) {
+        diff += 360;
+    }
+    if (diff > 180) {
+        diff -= 360;
+    }
+    float visibleRange = diff;
+    if (visibleRange > 90){
+        visibleRange = 90;
+    }
+    if (visibleRange < -90){
+        visibleRange = -90;
+    }
+
+    return map(visibleRange, -90, 90, 0, 6);
 }
 
 // This is for logger to end every log with \n
@@ -88,11 +126,11 @@ void setup() {
     compass.m_max = _janusz_calibration_max;
     compass.m_min = _janusz_calibration_min;
 
+    FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS);
+
     Log.notice("Setup done, ging to loop...");
 }
 
 void loop() {
-    compass.read();
-    Log.notice("%F", getHeadingAzimuth());
-    delay(50);
+    lightOneLed(targetAzimuthToLed(0));
 }
