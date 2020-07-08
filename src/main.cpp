@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <ArduinoLog.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
 #include <FastLED.h>
 #include <LSM303.h>
 #include <Wire.h>
@@ -14,6 +17,17 @@
 CRGB leds[NUM_LEDS];
 
 LSM303 compass;
+
+#define BLE_DEVICE_NAME "Hatlight"
+#define SERVICE_UUID "f344b002-83b5-4f2d-8b47-43b633299c8f"
+#define BLE_CHAR_MODE_UUID "47dcc51e-f45d-4e33-964d-ec998b1f2700"
+#define BLE_CHAR_COLOR_GENERAL_UUID "cd6aaefa-29d8-42ae-bd8c-fd4f654e7c66"
+
+BLECharacteristic *bCharMode;
+BLECharacteristic *bCharColorGeneral;
+
+#define MODE_BLANK 1
+#define MODE_SET_COLOR_FILL 2
 
 /*
 Calibrate compass
@@ -30,6 +44,13 @@ void lightOneLed(int ledIndex, CRGB oneColor = CRGB::White,
             continue;
         }
         leds[x] = restColor;
+    }
+    FastLED.show();
+}
+
+void lightAllLeds(CRGB color = CRGB::White) {
+    for (int x = 0; x < NUM_LEDS; x++) {
+        leds[x] = color;
     }
     FastLED.show();
 }
@@ -76,7 +97,6 @@ float getHeadingAzimuth() {
     return head;
 }
 
-
 // This is just to show that the compass is fucking working
 // this will be moved to some fancy class or some shit, i just want to show it
 int targetAzimuthToLed(float targetAzimuth) {
@@ -89,10 +109,10 @@ int targetAzimuthToLed(float targetAzimuth) {
         diff -= 360;
     }
     float visibleRange = diff;
-    if (visibleRange > 90){
+    if (visibleRange > 90) {
         visibleRange = 90;
     }
-    if (visibleRange < -90){
+    if (visibleRange < -90) {
         visibleRange = -90;
     }
 
@@ -100,7 +120,7 @@ int targetAzimuthToLed(float targetAzimuth) {
 }
 
 // This is for logger to end every log with \n
-void _printNewline(Print* _logOutput) { _logOutput->print('\n'); }
+void _printNewline(Print *_logOutput) { _logOutput->print('\n'); }
 
 void setup() {
     Serial.begin(115200);
@@ -128,9 +148,50 @@ void setup() {
 
     FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS);
 
+    Log.notice("Init Bluetooth...");
+    BLEDevice::init(BLE_DEVICE_NAME);
+    BLEServer *bServer = BLEDevice::createServer();
+    BLEService *bService = bServer->createService(SERVICE_UUID);
+    bCharMode = bService->createCharacteristic(
+        BLE_CHAR_MODE_UUID, BLECharacteristic::PROPERTY_READ |
+                                BLECharacteristic::PROPERTY_WRITE |
+                                BLECharacteristic::PROPERTY_NOTIFY);
+    bCharColorGeneral = bService->createCharacteristic(
+        BLE_CHAR_COLOR_GENERAL_UUID, BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE |
+                                         BLECharacteristic::PROPERTY_NOTIFY);
+
+    int blank = MODE_BLANK;
+    bCharMode->setValue(blank);
+    bService->start();
+    Log.verbose("Star advertising...");
+    BLEAdvertising *bAdvertising = BLEDevice::getAdvertising();
+    bAdvertising->addServiceUUID(SERVICE_UUID);
+    bAdvertising->setScanResponse(true);
+    bAdvertising->setMinPreferred(0x06);  // functions that help with iPhone
+    bAdvertising->setMinPreferred(0x12);
+    bAdvertising->start();
+    Log.verbose("Bluetooth working");
+
     Log.notice("Setup done, ging to loop...");
 }
 
 void loop() {
-    lightOneLed(targetAzimuthToLed(0));
+    int mode = bCharMode->getValue()[0];
+    switch (mode) {
+        case MODE_BLANK:
+            lightAllLeds(CRGB::Black);
+            break;
+        case MODE_SET_COLOR_FILL: {
+            CRGB color = CRGB(bCharColorGeneral->getValue()[0],
+                              bCharColorGeneral->getValue()[1],
+                              bCharColorGeneral->getValue()[2]);
+            lightAllLeds(color);
+            break;
+        }
+        default:
+            break;
+    }
+    // lightOneLed(targetAzimuthToLed(0), CRGB());
+    // delay(10);
 }
