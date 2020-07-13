@@ -33,7 +33,6 @@ BLECharacteristic *bCharNavCompassTargetBearing;
 #define MODE_SET_COLOR_FILL 2
 #define MODE_NAVIGATION_COMPASS_TARGET 3
 
-
 class MyCharCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
         Log.verbose("Ble characteristic onWrite callback");
@@ -195,6 +194,8 @@ void setup() {
 
     int blank = MODE_BLANK;
     bCharMode->setValue(blank);
+    char white[3] = {255, 255, 255};
+    bCharColorGeneral->setValue(white);  // White 24-bit color code
     bService->start();
     Log.verbose("Star advertising...");
     BLEAdvertising *bAdvertising = BLEDevice::getAdvertising();
@@ -215,6 +216,7 @@ void loop() {
             lightAllLeds(CRGB::Black);
             break;
         case MODE_SET_COLOR_FILL: {
+            // TODO: put this char-to-CRGB into function
             CRGB color = CRGB(bCharColorGeneral->getValue()[0],
                               bCharColorGeneral->getValue()[1],
                               bCharColorGeneral->getValue()[2]);
@@ -222,8 +224,11 @@ void loop() {
             break;
         }
         case MODE_NAVIGATION_COMPASS_TARGET: {
-            lightOneLed(targetAzimuthToLed(
-                bCharNavCompassTargetBearing->getValue()[0]));
+            lightOneLed(
+                targetAzimuthToLed(bCharNavCompassTargetBearing->getValue()[0]),
+                CRGB(bCharColorGeneral->getValue()[0],
+                     bCharColorGeneral->getValue()[1],
+                     bCharColorGeneral->getValue()[2]));
         }
         default:
             break;
