@@ -22,12 +22,37 @@ LSM303 compass;
 #define SERVICE_UUID "f344b002-83b5-4f2d-8b47-43b633299c8f"
 #define BLE_CHAR_MODE_UUID "47dcc51e-f45d-4e33-964d-ec998b1f2700"
 #define BLE_CHAR_COLOR_GENERAL_UUID "cd6aaefa-29d8-42ae-bd8c-fd4f654e7c66"
+#define BLE_CHAR_NAV_COMPASS_TARGET_BEARING_UUID \
+    "c749ff77-6401-48cd-b739-cfad6eba6f01"
 
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
+BLECharacteristic *bCharNavCompassTargetBearing;
 
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
+#define MODE_NAVIGATION_COMPASS_TARGET 3
+
+
+class MyCharCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        Log.verbose("Ble characteristic onWrite callback");
+        if (pCharacteristic == bCharMode) {
+            Log.verbose("bCharMode");
+            Log.verbose("Mode: %d", pCharacteristic->getValue()[0]);
+        } else if (pCharacteristic == bCharColorGeneral) {
+            Log.verbose("bCharColorGeneral");
+            Log.verbose(
+                "New color: R=%d G=%d B=%d", pCharacteristic->getValue()[0],
+                pCharacteristic->getValue()[1], pCharacteristic->getValue()[2]);
+        } else if (pCharacteristic == bCharNavCompassTargetBearing) {
+            Log.verbose("bCharNavCompassTargetBearing");
+            Log.verbose("New heading: %d", pCharacteristic->getValue()[0]);
+        } else {
+            Log.warning("Unknown Ble characteristic onWrite callback!");
+        }
+    }
+};
 
 /*
 Calibrate compass
@@ -156,10 +181,17 @@ void setup() {
         BLE_CHAR_MODE_UUID, BLECharacteristic::PROPERTY_READ |
                                 BLECharacteristic::PROPERTY_WRITE |
                                 BLECharacteristic::PROPERTY_NOTIFY);
+    bCharMode->setCallbacks(new MyCharCallbacks());
     bCharColorGeneral = bService->createCharacteristic(
         BLE_CHAR_COLOR_GENERAL_UUID, BLECharacteristic::PROPERTY_READ |
                                          BLECharacteristic::PROPERTY_WRITE |
                                          BLECharacteristic::PROPERTY_NOTIFY);
+    bCharColorGeneral->setCallbacks(new MyCharCallbacks());
+    bCharNavCompassTargetBearing = bService->createCharacteristic(
+        BLE_CHAR_NAV_COMPASS_TARGET_BEARING_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
+            BLECharacteristic::PROPERTY_NOTIFY);
+    bCharNavCompassTargetBearing->setCallbacks(new MyCharCallbacks());
 
     int blank = MODE_BLANK;
     bCharMode->setValue(blank);
@@ -173,7 +205,7 @@ void setup() {
     bAdvertising->start();
     Log.verbose("Bluetooth working");
 
-    Log.notice("Setup done, ging to loop...");
+    Log.notice("Setup done, going to loop...");
 }
 
 void loop() {
@@ -189,9 +221,11 @@ void loop() {
             lightAllLeds(color);
             break;
         }
+        case MODE_NAVIGATION_COMPASS_TARGET: {
+            lightOneLed(targetAzimuthToLed(
+                bCharNavCompassTargetBearing->getValue()[0]));
+        }
         default:
             break;
     }
-    // lightOneLed(targetAzimuthToLed(0), CRGB());
-    // delay(10);
 }
