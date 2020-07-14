@@ -24,14 +24,32 @@ LSM303 compass;
 #define BLE_CHAR_COLOR_GENERAL_UUID "cd6aaefa-29d8-42ae-bd8c-fd4f654e7c66"
 #define BLE_CHAR_NAV_COMPASS_TARGET_BEARING_UUID \
     "c749ff77-6401-48cd-b739-cfad6eba6f01"
+#define BLE_CHAR_CALIBRATE_COMPASS_UUID "bc5939f5-ce5c-450f-870f-876e92d52d89"
 
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
 BLECharacteristic *bCharNavCompassTargetBearing;
+BLECharacteristic *bCharCalibrateCompass;
+#define CALIBRATE_COMPASS_TIME_MS 60000  // 1 minute
+unsigned long calibrateBegin = CALIBRATE_COMPASS_TIME_MS;
 
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
 #define MODE_NAVIGATION_COMPASS_TARGET 3
+
+LSM303::vector<int16_t> _janusz_calibration_min = {-578, -586, -425},
+                        _janusz_calibration_max = {613, 608, 542};
+LSM303::vector<int16_t> _calib_place_min = {32767, 32767, 32767},
+                        _calib_place_max = {-32768, -32768, -32768};
+void autoCalibrate() {
+    compass.m_min.x = min(compass.m_min.x, compass.m.x);
+    compass.m_min.y = min(compass.m_min.y, compass.m.y);
+    compass.m_min.z = min(compass.m_min.z, compass.m.z);
+
+    compass.m_max.x = max(compass.m_max.x, compass.m.x);
+    compass.m_max.y = max(compass.m_max.y, compass.m.y);
+    compass.m_max.z = max(compass.m_max.z, compass.m.z);
+}
 
 class MyCharCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
@@ -47,6 +65,18 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
         } else if (pCharacteristic == bCharNavCompassTargetBearing) {
             Log.verbose("bCharNavCompassTargetBearing");
             Log.verbose("New heading: %d", pCharacteristic->getValue()[0]);
+        } else if (pCharacteristic == bCharCalibrateCompass) {
+            Log.verbose("bCharCalibrateCompass");
+            if (pCharacteristic->getValue()[0] == 1) {
+                // Reset calibration
+                compass.m_min = _calib_place_min;
+                compass.m_max = _calib_place_max;
+                calibrateBegin = millis();
+                Log.notice("Begining calibration at %d millis, for next %d ms",
+                           calibrateBegin, CALIBRATE_COMPASS_TIME_MS);
+            } else {
+                Log.notice("Stop calibration");
+            }
         } else {
             Log.warning("Unknown Ble characteristic onWrite callback!");
         }
@@ -77,20 +107,6 @@ void lightAllLeds(CRGB color = CRGB::White) {
         leds[x] = color;
     }
     FastLED.show();
-}
-
-LSM303::vector<int16_t> _janusz_calibration_min = {-578, -586, -425},
-                        _janusz_calibration_max = {613, 608, 542};
-LSM303::vector<int16_t> _calib_place_min = {32767, 32767, 32767},
-                        _calib_place_max = {-32768, -32768, -32768};
-void autoCalibrate() {
-    compass.m_min.x = min(compass.m_min.x, compass.m.x);
-    compass.m_min.y = min(compass.m_min.y, compass.m.y);
-    compass.m_min.z = min(compass.m_min.z, compass.m.z);
-
-    compass.m_max.x = max(compass.m_max.x, compass.m.x);
-    compass.m_max.y = max(compass.m_max.y, compass.m.y);
-    compass.m_max.z = max(compass.m_max.z, compass.m.z);
 }
 
 // This is TODO in future, if I every finally find method to get true heading
@@ -176,26 +192,41 @@ void setup() {
     BLEDevice::init(BLE_DEVICE_NAME);
     BLEServer *bServer = BLEDevice::createServer();
     BLEService *bService = bServer->createService(SERVICE_UUID);
+
+    Log.verbose("Setting bCharMode...");
     bCharMode = bService->createCharacteristic(
         BLE_CHAR_MODE_UUID, BLECharacteristic::PROPERTY_READ |
                                 BLECharacteristic::PROPERTY_WRITE |
                                 BLECharacteristic::PROPERTY_NOTIFY);
     bCharMode->setCallbacks(new MyCharCallbacks());
+    int blank = MODE_BLANK;
+    bCharMode->setValue(blank);
+
+    Log.verbose("Setting bCharColorGeneral...");
     bCharColorGeneral = bService->createCharacteristic(
         BLE_CHAR_COLOR_GENERAL_UUID, BLECharacteristic::PROPERTY_READ |
                                          BLECharacteristic::PROPERTY_WRITE |
                                          BLECharacteristic::PROPERTY_NOTIFY);
     bCharColorGeneral->setCallbacks(new MyCharCallbacks());
+    char white[3] = {255, 255, 255};
+    bCharColorGeneral->setValue(white);  // White 24-bit color code
+
+    Log.verbose("Setting bCharNavCompass...");
     bCharNavCompassTargetBearing = bService->createCharacteristic(
         BLE_CHAR_NAV_COMPASS_TARGET_BEARING_UUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
             BLECharacteristic::PROPERTY_NOTIFY);
     bCharNavCompassTargetBearing->setCallbacks(new MyCharCallbacks());
 
-    int blank = MODE_BLANK;
-    bCharMode->setValue(blank);
-    char white[3] = {255, 255, 255};
-    bCharColorGeneral->setValue(white);  // White 24-bit color code
+    Log.verbose("Setting bCharCalibrateCompass...");
+    bCharCalibrateCompass = bService->createCharacteristic(
+        BLE_CHAR_CALIBRATE_COMPASS_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
+            BLECharacteristic::PROPERTY_NOTIFY);
+    bCharCalibrateCompass->setCallbacks(new MyCharCallbacks());
+    int calib = 0;
+    bCharCalibrateCompass->setValue(calib);
+
     bService->start();
     Log.verbose("Star advertising...");
     BLEAdvertising *bAdvertising = BLEDevice::getAdvertising();
@@ -211,6 +242,29 @@ void setup() {
 
 void loop() {
     int mode = bCharMode->getValue()[0];
+
+    // Calibration
+    if (bCharCalibrateCompass->getValue()[0] == 1) {
+        if (millis() < calibrateBegin + CALIBRATE_COMPASS_TIME_MS) {
+            lightAllLeds(CRGB::Black);
+            leds[0] = CRGB::Green;
+            leds[NUM_LEDS - 1] = CRGB::Blue;
+            FastLED.show();
+            autoCalibrate();
+            // Don't execute anything else meanwhile
+            return;
+        } else {
+            // TODO: Save calibration to file
+            Log.notice("End of calibration");
+            Log.verbose("m_min: %d, %d, %d", compass.m_min.x, compass.m_min.y,
+                        compass.m_min.z);
+            Log.verbose("m_max: %d, %d, %d", compass.m_max.x, compass.m_max.y,
+                        compass.m_max.z);
+            int no = 0;
+            bCharCalibrateCompass->setValue(no);
+        }
+    }
+
     switch (mode) {
         case MODE_BLANK:
             lightAllLeds(CRGB::Black);
