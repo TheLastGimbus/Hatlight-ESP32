@@ -17,6 +17,8 @@
 CRGB leds[NUM_LEDS];
 
 LSM303 compass;
+#define DEFAULT_HEADING_CALIBRATION_OFFSET 30
+#define DEFAULT_MAGNETIC_DECLINATION 6
 
 #define BLE_DEVICE_NAME "Hatlight"
 #define SERVICE_UUID "f344b002-83b5-4f2d-8b47-43b633299c8f"
@@ -25,6 +27,9 @@ LSM303 compass;
 #define BLE_CHAR_NAV_COMPASS_TARGET_BEARING_UUID \
     "c749ff77-6401-48cd-b739-cfad6eba6f01"
 #define BLE_CHAR_CALIBRATE_COMPASS_UUID "bc5939f5-ce5c-450f-870f-876e92d52d89"
+#define BLE_CHAR_COMPASS_OFFSET_UUID "903379c1-af1d-4962-8eb9-dec102357e1b"
+#define BLE_CHAR_MAGNETIC_DECLINATION_UUID \
+    "d887e381-54e1-4e2b-bdf5-258b84f8c28f"
 
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
@@ -32,6 +37,9 @@ BLECharacteristic *bCharNavCompassTargetBearing;
 BLECharacteristic *bCharCalibrateCompass;
 #define CALIBRATE_COMPASS_TIME_MS 60000  // 1 minute
 unsigned long calibrateBegin = CALIBRATE_COMPASS_TIME_MS;
+// TODO: Also save this in flash
+BLECharacteristic *bCharCompassOffset;
+BLECharacteristic *bCharMagneticDeclination;
 
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
@@ -130,6 +138,8 @@ float getHeadingAzimuth() {
 
     float head = atan2(E.y, E.z) * 180 / PI;
     head += 180;
+    head += bCharMagneticDeclination->getValue()[0];
+    head -= bCharCompassOffset->getValue()[0];
     if (head < 0) {
         head += 360;
     }
@@ -156,6 +166,10 @@ int targetAzimuthToLed(float targetAzimuth) {
         visibleRange = -90;
     }
 
+    // TODO: This could possible be reason for inaccurate heading
+    // I notieced that when heading back, led flips from left to right correctly,
+    // but center led is not always correct
+    // not-good numbers mapping could be the cause of this
     return map(visibleRange, -90, 90, 0, 6);
 }
 
@@ -227,6 +241,22 @@ void setup() {
     int calib = 0;
     bCharCalibrateCompass->setValue(calib);
 
+    Log.verbose("Setting bCharCompassOffset...");
+    bCharCompassOffset = bService->createCharacteristic(
+        BLE_CHAR_COMPASS_OFFSET_UUID, BLECharacteristic::PROPERTY_READ |
+                                          BLECharacteristic::PROPERTY_WRITE |
+                                          BLECharacteristic::PROPERTY_NOTIFY);
+    int off = DEFAULT_HEADING_CALIBRATION_OFFSET;
+    bCharCompassOffset->setValue(off);
+
+    Log.verbose("Setting bCharMagneticDeclination...");
+    bCharMagneticDeclination = bService->createCharacteristic(
+        BLE_CHAR_MAGNETIC_DECLINATION_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
+            BLECharacteristic::PROPERTY_NOTIFY);
+    int dec = DEFAULT_MAGNETIC_DECLINATION;
+    bCharMagneticDeclination->setValue(dec);
+
     bService->start();
     Log.verbose("Star advertising...");
     BLEAdvertising *bAdvertising = BLEDevice::getAdvertising();
@@ -250,6 +280,7 @@ void loop() {
             leds[0] = CRGB::Green;
             leds[NUM_LEDS - 1] = CRGB::Blue;
             FastLED.show();
+            compass.read();
             autoCalibrate();
             // Don't execute anything else meanwhile
             return;
@@ -268,6 +299,7 @@ void loop() {
     switch (mode) {
         case MODE_BLANK:
             lightAllLeds(CRGB::Black);
+            Log.verbose("head: %F", getHeadingAzimuth());
             break;
         case MODE_SET_COLOR_FILL: {
             // TODO: put this char-to-CRGB into function
