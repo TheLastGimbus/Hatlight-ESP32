@@ -55,6 +55,7 @@ BLECharacteristic *bCharColorIndividual;
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
 #define MODE_NAVIGATION_COMPASS_TARGET 3
+#define MODE_SET_COLORS_INDIVIDUAL 4
 
 LSM303::vector<int16_t> _janusz_calibration_min = {-578, -586, -425},
                         _janusz_calibration_max = {613, 608, 542};
@@ -405,8 +406,14 @@ void loop() {
                 CRGB(bCharColorGeneral->getValue()[0],
                      bCharColorGeneral->getValue()[1],
                      bCharColorGeneral->getValue()[2]));
+            break;
+        }
+        case MODE_SET_COLORS_INDIVIDUAL: {
+            break;
         }
         default:
+            Log.error("Unknown error is set! Falling back to blank!");
+            lightAllLeds(CRGB::Black);
             break;
     }
 }
