@@ -43,6 +43,7 @@ LSM303 compass;
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
 BLECharacteristic *bCharNavCompassTargetBearing;
+unsigned long charNavCompassLastUpdate = 0;
 BLECharacteristic *bCharCalibrateCompass;
 #define CALIBRATE_COMPASS_TIME_MS 60000  // 1 minute
 unsigned long calibrateBegin = CALIBRATE_COMPASS_TIME_MS;
@@ -85,6 +86,7 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
         } else if (pCharacteristic == bCharNavCompassTargetBearing) {
             Log.verbose("bCharNavCompassTargetBearing");
             Log.verbose("New heading: %d", pCharacteristic->getValue()[0]);
+            charNavCompassLastUpdate = millis();
         } else if (pCharacteristic == bCharCalibrateCompass) {
             Log.verbose("bCharCalibrateCompass");
             if (pCharacteristic->getValue()[0] == 1) {
@@ -428,6 +430,11 @@ void loop() {
                 CRGB(bCharColorGeneral->getValue()[0],
                      bCharColorGeneral->getValue()[1],
                      bCharColorGeneral->getValue()[2]));
+            if(millis() > charNavCompassLastUpdate + 30000){
+                leds[0] = CRGB::DarkRed;
+                leds[NUM_LEDS - 1] = CRGB::DarkRed;
+                FastLED.show();
+            }
             break;
         }
         case MODE_SET_COLORS_INDIVIDUAL: {
