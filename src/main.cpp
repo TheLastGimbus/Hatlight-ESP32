@@ -91,6 +91,7 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
                 Log.notice("Begining calibration at %d millis, for next %d ms",
                            calibrateBegin, CALIBRATE_COMPASS_TIME_MS);
             } else {
+                // WARN: Stopping calibarion by writing to this char externally will not save callibration values!
                 Log.notice("Stop calibration");
             }
         } else {
@@ -218,7 +219,6 @@ void setup() {
     int minX = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_X);
     int minY = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_Y);
     int minZ = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_Z);
-
     int maxX = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_X);
     int maxY = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_Y);
     int maxZ = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_Z);
@@ -334,25 +334,16 @@ void loop() {
             int no = 0;
             bCharCalibrateCompass->setValue(no);
 
-            // bool minXOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x);
-            // bool minYOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y);
-            // bool minZOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z);
-
-            // bool maxXOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x);
-            // bool maxYOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y);
-            // bool maxZOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z);
-
             Log.trace("Saving calibration in NVS...");
             int ok = 0;
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x);
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y);
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z);
-
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x);
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y);
             ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z);
-            int failed = 6-ok;
-            if(failed>0){
+            int failed = 6 - ok;
+            if (failed > 0) {
                 Log.error("There was %d failed calibration saves!", failed);
             }
         }
@@ -361,7 +352,6 @@ void loop() {
     switch (mode) {
         case MODE_BLANK:
             lightAllLeds(CRGB::Black);
-            // Log.verbose("head: %F", getHeadingAzimuth());
             break;
         case MODE_SET_COLOR_FILL: {
             // TODO: put this char-to-CRGB into function
