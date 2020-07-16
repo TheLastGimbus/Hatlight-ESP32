@@ -38,6 +38,7 @@ LSM303 compass;
 #define BLE_CHAR_COMPASS_OFFSET_UUID "903379c1-af1d-4962-8eb9-dec102357e1b"
 #define BLE_CHAR_MAGNETIC_DECLINATION_UUID \
     "d887e381-54e1-4e2b-bdf5-258b84f8c28f"
+#define BLE_CHAR_COLOR_INDIVIDUAL_UUID "f4b9e311-fee0-4b8a-b677-edd617e79ee2"
 
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
@@ -45,9 +46,11 @@ BLECharacteristic *bCharNavCompassTargetBearing;
 BLECharacteristic *bCharCalibrateCompass;
 #define CALIBRATE_COMPASS_TIME_MS 60000  // 1 minute
 unsigned long calibrateBegin = CALIBRATE_COMPASS_TIME_MS;
-// TODO: Also save this in flash
 BLECharacteristic *bCharCompassOffset;
 BLECharacteristic *bCharMagneticDeclination;
+// This is series of R, G, B colors of individual leds
+// 0R, 0G, 0B, 1R, 1G, 1B etc
+BLECharacteristic *bCharColorIndividual;
 
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
@@ -95,6 +98,8 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
                 // will not save callibration values!
                 Log.notice("Stop calibration");
             }
+        } else if (pCharacteristic == bCharColorIndividual) {
+            Log.verbose("bCharColorIndividual");
         } else {
             Log.warning("Unknown Ble characteristic onWrite callback!");
         }
@@ -323,6 +328,12 @@ void setup() {
             BLECharacteristic::PROPERTY_NOTIFY);
     int dec = DEFAULT_MAGNETIC_DECLINATION;
     bCharMagneticDeclination->setValue(dec);
+
+    Log.verbose("Setting bCharColorIndividual...");
+    bCharColorIndividual = bService->createCharacteristic(
+        BLE_CHAR_COLOR_INDIVIDUAL_UUID, BLECharacteristic::PROPERTY_READ |
+                                            BLECharacteristic::PROPERTY_WRITE |
+                                            BLECharacteristic::PROPERTY_NOTIFY);
 
     bService->start();
     Log.verbose("Star advertising...");
