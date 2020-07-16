@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoLog.h>
+#include <ArduinoNvs.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -13,6 +14,13 @@
 #define PIN_MAG_SCL 16
 #define PIN_LED 4
 #define NUM_LEDS 7
+
+#define NVS_COMPASS_CALIB_MAG_MIN_X "c.cal.m.min.x"
+#define NVS_COMPASS_CALIB_MAG_MIN_Y "c.cal.m.min.y"
+#define NVS_COMPASS_CALIB_MAG_MIN_Z "c.cal.m.min.z"
+#define NVS_COMPASS_CALIB_MAG_MAX_X "c.cal.m.max.x"
+#define NVS_COMPASS_CALIB_MAG_MAX_Y "c.cal.m.max.y"
+#define NVS_COMPASS_CALIB_MAG_MAX_Z "c.cal.m.max.z"
 
 CRGB leds[NUM_LEDS];
 
@@ -167,9 +175,9 @@ int targetAzimuthToLed(float targetAzimuth) {
     }
 
     // TODO: This could possible be reason for inaccurate heading
-    // I notieced that when heading back, led flips from left to right correctly,
-    // but center led is not always correct
-    // not-good numbers mapping could be the cause of this
+    // I notieced that when heading back, led flips from left to right
+    // correctly, but center led is not always correct not-good numbers mapping
+    // could be the cause of this
     return map(visibleRange, -90, 90, 0, 6);
 }
 
@@ -197,12 +205,44 @@ void setup() {
     } else {
         Log.trace("Compass working");
     }
-    compass.m_max = _janusz_calibration_max;
-    compass.m_min = _janusz_calibration_min;
+
+    Log.verbose("Init NVS...");
+    bool nvsOk = NVS.begin();
+    if (nvsOk) {
+        Log.trace("NVS working");
+    } else {
+        Log.error("NVS not working!");
+    }
+
+    Log.verbose("Reading compass calibration from NVS...");
+    int minX = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_X);
+    int minY = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_Y);
+    int minZ = NVS.getInt(NVS_COMPASS_CALIB_MAG_MIN_Z);
+
+    int maxX = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_X);
+    int maxY = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_Y);
+    int maxZ = NVS.getInt(NVS_COMPASS_CALIB_MAG_MAX_Z);
+
+    // Yes, I know this can be done with !minX, but this shows more clear what i
+    // want to do here
+    if (minX == 0 || minY == 0 || minZ == 0 || maxX == 0 || maxY == 0 ||
+        maxZ == 0) {
+        Log.warning(
+            "Compass calibration from NVS returned 0 in at least one val - "
+            "probably not saved yet. Falling back to stock...");
+        compass.m_min = _janusz_calibration_min;
+        compass.m_max = _janusz_calibration_max;
+    } else {
+        Log.verbose("Compass calibration from NVS:");
+        Log.verbose("Min X Y Z: %d %d %d", minX, minY, minZ);
+        Log.verbose("Max X Y Z: %d %d %d", maxX, maxY, maxZ);
+        compass.m_min = {minX, minY, minZ};
+        compass.m_max = {maxX, maxY, maxZ};
+    }
 
     FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS);
 
-    Log.notice("Init Bluetooth...");
+    Log.trace("Init Bluetooth...");
     BLEDevice::init(BLE_DEVICE_NAME);
     BLEServer *bServer = BLEDevice::createServer();
     BLEService *bService = bServer->createService(SERVICE_UUID);
@@ -286,20 +326,42 @@ void loop() {
             return;
         } else {
             // TODO: Save calibration to file
-            Log.notice("End of calibration");
+            Log.notice("End of compass magnet calibration");
             Log.verbose("m_min: %d, %d, %d", compass.m_min.x, compass.m_min.y,
                         compass.m_min.z);
             Log.verbose("m_max: %d, %d, %d", compass.m_max.x, compass.m_max.y,
                         compass.m_max.z);
             int no = 0;
             bCharCalibrateCompass->setValue(no);
+
+            // bool minXOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x);
+            // bool minYOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y);
+            // bool minZOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z);
+
+            // bool maxXOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x);
+            // bool maxYOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y);
+            // bool maxZOk = NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z);
+
+            Log.trace("Saving calibration in NVS...");
+            int ok = 0;
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z);
+
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z);
+            int failed = 6-ok;
+            if(failed>0){
+                Log.error("There was %d failed calibration saves!", failed);
+            }
         }
     }
 
     switch (mode) {
         case MODE_BLANK:
             lightAllLeds(CRGB::Black);
-            Log.verbose("head: %F", getHeadingAzimuth());
+            // Log.verbose("head: %F", getHeadingAzimuth());
             break;
         case MODE_SET_COLOR_FILL: {
             // TODO: put this char-to-CRGB into function
