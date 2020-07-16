@@ -385,15 +385,19 @@ void loop() {
 
             Log.trace("Saving calibration in NVS...");
             int ok = 0;
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x, false);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y, false);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z, false);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x, false);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y, false);
+            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z, false);
+            bool cOk = NVS.commit();
             int failed = 6 - ok;
             if (failed > 0) {
                 Log.error("There was %d failed calibration saves!", failed);
+            }
+            if(!cOk){
+                Log.error("NVS.commit() returnet false!");
             }
         }
     }
