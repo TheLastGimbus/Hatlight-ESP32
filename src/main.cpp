@@ -205,6 +205,7 @@ int targetAzimuthToLed(float targetAzimuth) {
     // Map it to + values because I skipped to many math classes to make
     // segmentMap() function work with minus values
     float uRange = map(visibleRange, -90, 90, 0, 180);
+    Log.verbose("t: %D  diff: %D   vR: %D   uR: %D", targetAzimuth, diff, visibleRange, uRange);
 
     // TODO: This could possible be reason for inaccurate heading
     // I notieced that when heading back, led flips from left to right
@@ -415,8 +416,15 @@ void loop() {
             break;
         }
         case MODE_NAVIGATION_COMPASS_TARGET: {
+            // azimuth can range between 0-360
+            // 360 is more than 255, which is max for 8 bit byte
+            // so we need to get two of them and combine them to one 16 bit
+            // of fucking course this is from stackoverflow
+            uint8_t byte1 = bCharNavCompassTargetBearing->getValue()[0];
+            uint8_t byte2 = bCharNavCompassTargetBearing->getValue()[1];
+            uint16_t combined = ((uint16_t)byte1 << 8) | byte2;
             lightOneLed(
-                targetAzimuthToLed(bCharNavCompassTargetBearing->getValue()[0]),
+                targetAzimuthToLed(combined),
                 CRGB(bCharColorGeneral->getValue()[0],
                      bCharColorGeneral->getValue()[1],
                      bCharColorGeneral->getValue()[2]));
