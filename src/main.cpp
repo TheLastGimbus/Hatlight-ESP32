@@ -335,6 +335,16 @@ void setup() {
         BLE_CHAR_COLOR_INDIVIDUAL_UUID, BLECharacteristic::PROPERTY_READ |
                                             BLECharacteristic::PROPERTY_WRITE |
                                             BLECharacteristic::PROPERTY_NOTIFY);
+    uint8_t colors[21] = {  // A nice rainbow
+        255, 0,   0,    //
+        255, 217, 0,    //
+        72,  255, 0,    //
+        0,   255, 145,  //
+        0,   145, 255,  //
+        72,   0,   255,  //
+        255, 0,   217   //
+    };
+    bCharColorIndividual->setValue(colors, size_t(21));
 
     bService->start();
     Log.verbose("Star advertising...");
@@ -409,6 +419,14 @@ void loop() {
             break;
         }
         case MODE_SET_COLORS_INDIVIDUAL: {
+            for (int x = 0; x < NUM_LEDS; x++) {
+                // Led index * 3 because every led takes 3 values
+                int charX = x * 3;
+                leds[x] = CRGB(bCharColorIndividual->getValue()[charX + 0],
+                               bCharColorIndividual->getValue()[charX + 1],
+                               bCharColorIndividual->getValue()[charX + 2]);
+            }
+            FastLED.show();
             break;
         }
         default:
