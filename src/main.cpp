@@ -25,7 +25,7 @@
 CRGB leds[NUM_LEDS];
 
 LSM303 compass;
-#define DEFAULT_HEADING_CALIBRATION_OFFSET 30
+#define DEFAULT_HEADING_CALIBRATION_OFFSET 20
 #define DEFAULT_MAGNETIC_DECLINATION 6
 
 #define BLE_DEVICE_NAME "Hatlight"
@@ -91,7 +91,8 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
                 Log.notice("Begining calibration at %d millis, for next %d ms",
                            calibrateBegin, CALIBRATE_COMPASS_TIME_MS);
             } else {
-                // WARN: Stopping calibarion by writing to this char externally will not save callibration values!
+                // WARN: Stopping calibarion by writing to this char externally
+                // will not save callibration values!
                 Log.notice("Stop calibration");
             }
         } else {
@@ -156,10 +157,29 @@ float getHeadingAzimuth() {
     return head;
 }
 
+// This DOES NOT work with negative values!!!
+int segmentMap(int value, int min1, int max1, int min2, int max2) {
+    // Limit input just in case
+    if (value < min1) value = min1;
+    if (value > max1) value = max1;
+
+    double inputRange = max1 - min1;
+    double outputRange = max2 - min2 + 1;
+
+    // How much one segment aka. "step" is, in input range to output
+    // For example, if your input is 0-1000 and out is 0-10, one "step" is 10+1
+    double segmentSize = inputRange / outputRange;
+    int segment = double(value) / segmentSize;
+    if (segment > max2) segment = max2;  // Fuck it
+    return segment;
+}
+
 // This is just to show that the compass is fucking working
 // this will be moved to some fancy class or some shit, i just want to show it
 int targetAzimuthToLed(float targetAzimuth) {
     float current = getHeadingAzimuth();
+    // Get the difference between where is current azimuth and where is target
+    // - minus values are on left, plus'es are on right
     float diff = targetAzimuth - current;
     if (diff < -180) {
         diff += 360;
@@ -167,6 +187,7 @@ int targetAzimuthToLed(float targetAzimuth) {
     if (diff > 180) {
         diff -= 360;
     }
+    // Limit the range to only the half that's in front of us
     float visibleRange = diff;
     if (visibleRange > 90) {
         visibleRange = 90;
@@ -175,11 +196,17 @@ int targetAzimuthToLed(float targetAzimuth) {
         visibleRange = -90;
     }
 
+    // Map it to + values because I skipped to many math classes to make
+    // segmentMap() function work with minus values
+    float uRange = map(visibleRange, -90, 90, 0, 180);
+
     // TODO: This could possible be reason for inaccurate heading
     // I notieced that when heading back, led flips from left to right
     // correctly, but center led is not always correct not-good numbers mapping
     // could be the cause of this
-    return map(visibleRange, -90, 90, 0, 6);
+    // "Few, hours, later..."
+    // Yup, yes it was - because it was just a map(). Now it's working :)
+    return segmentMap(uRange, 0, 180, 0, 6);
 }
 
 // This is for logger to end every log with \n
