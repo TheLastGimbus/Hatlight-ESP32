@@ -101,6 +101,10 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
                 // will not save callibration values!
                 Log.notice("Stop calibration");
             }
+        } else if (pCharacteristic == bCharCompassOffset) {
+            Log.verbose("bCharCompassOffset");
+        } else if (pCharacteristic == bCharMagneticDeclination) {
+            Log.verbose("bCharMagneticDeclination");
         } else if (pCharacteristic == bCharColorIndividual) {
             Log.verbose("bCharColorIndividual");
         } else {
@@ -207,7 +211,8 @@ int targetAzimuthToLed(float targetAzimuth) {
     // Map it to + values because I skipped to many math classes to make
     // segmentMap() function work with minus values
     float uRange = map(visibleRange, -90, 90, 0, 180);
-    Log.verbose("t: %D  diff: %D   vR: %D   uR: %D", targetAzimuth, diff, visibleRange, uRange);
+    Log.verbose("t: %D  diff: %D   vR: %D   uR: %D", targetAzimuth, diff,
+                visibleRange, uRange);
 
     // TODO: This could possible be reason for inaccurate heading
     // I notieced that when heading back, led flips from left to right
@@ -322,6 +327,7 @@ void setup() {
         BLE_CHAR_COMPASS_OFFSET_UUID, BLECharacteristic::PROPERTY_READ |
                                           BLECharacteristic::PROPERTY_WRITE |
                                           BLECharacteristic::PROPERTY_NOTIFY);
+    bCharCompassOffset->setCallbacks(new MyCharCallbacks());
     int off = DEFAULT_HEADING_CALIBRATION_OFFSET;
     bCharCompassOffset->setValue(off);
 
@@ -330,6 +336,7 @@ void setup() {
         BLE_CHAR_MAGNETIC_DECLINATION_UUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
             BLECharacteristic::PROPERTY_NOTIFY);
+    bCharMagneticDeclination->setCallbacks(new MyCharCallbacks());
     int dec = DEFAULT_MAGNETIC_DECLINATION;
     bCharMagneticDeclination->setValue(dec);
 
@@ -338,13 +345,15 @@ void setup() {
         BLE_CHAR_COLOR_INDIVIDUAL_UUID, BLECharacteristic::PROPERTY_READ |
                                             BLECharacteristic::PROPERTY_WRITE |
                                             BLECharacteristic::PROPERTY_NOTIFY);
-    uint8_t colors[21] = {  // A nice rainbow
+    bCharColorIndividual->setCallbacks(new MyCharCallbacks());
+    uint8_t colors[21] = {
+        // A nice rainbow
         255, 0,   0,    //
         255, 217, 0,    //
         72,  255, 0,    //
         0,   255, 145,  //
         0,   145, 255,  //
-        72,   0,   255,  //
+        72,  0,   255,  //
         255, 0,   217   //
     };
     bCharColorIndividual->setValue(colors, size_t(21));
@@ -388,18 +397,24 @@ void loop() {
 
             Log.trace("Saving calibration in NVS...");
             int ok = 0;
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x, false);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y, false);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z, false);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x, false);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y, false);
-            ok += NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_X, compass.m_min.x, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Y, compass.m_min.y, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MIN_Z, compass.m_min.z, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_X, compass.m_max.x, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Y, compass.m_max.y, false);
+            ok +=
+                NVS.setInt(NVS_COMPASS_CALIB_MAG_MAX_Z, compass.m_max.z, false);
             bool cOk = NVS.commit();
             int failed = 6 - ok;
             if (failed > 0) {
                 Log.error("There was %d failed calibration saves!", failed);
             }
-            if(!cOk){
+            if (!cOk) {
                 Log.error("NVS.commit() returnet false!");
             }
         }
@@ -425,12 +440,11 @@ void loop() {
             uint8_t byte1 = bCharNavCompassTargetBearing->getValue()[0];
             uint8_t byte2 = bCharNavCompassTargetBearing->getValue()[1];
             uint16_t combined = ((uint16_t)byte1 << 8) | byte2;
-            lightOneLed(
-                targetAzimuthToLed(combined),
-                CRGB(bCharColorGeneral->getValue()[0],
-                     bCharColorGeneral->getValue()[1],
-                     bCharColorGeneral->getValue()[2]));
-            if(millis() > charNavCompassLastUpdate + 30000){
+            lightOneLed(targetAzimuthToLed(combined),
+                        CRGB(bCharColorGeneral->getValue()[0],
+                             bCharColorGeneral->getValue()[1],
+                             bCharColorGeneral->getValue()[2]));
+            if (millis() > charNavCompassLastUpdate + 30000) {
                 leds[0] = CRGB::DarkRed;
                 leds[NUM_LEDS - 1] = CRGB::DarkRed;
                 FastLED.show();
