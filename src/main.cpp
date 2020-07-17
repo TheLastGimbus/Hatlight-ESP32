@@ -40,6 +40,9 @@ LSM303 compass;
     "d887e381-54e1-4e2b-bdf5-258b84f8c28f"
 #define BLE_CHAR_COLOR_INDIVIDUAL_UUID "f4b9e311-fee0-4b8a-b677-edd617e79ee2"
 
+// Possibly add this as other char + saved in NVS?
+unsigned long lastCharEvent = 0;
+#define LAST_CHAR_EVENT_SLEEP_TIMEOUT 10 * 60 * 1000  // 10 minutes
 BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
 BLECharacteristic *bCharNavCompassTargetBearing;
@@ -72,8 +75,19 @@ void autoCalibrate() {
     compass.m_max.z = max(compass.m_max.z, compass.m.z);
 }
 
+void powerOff() {
+    Log.notice("Going to deep sleep forever...");
+    BLEDevice::deinit(true);
+    lightOneLed(NUM_LEDS / 2, CRGB(126, 0, 255));  // Purple
+    delay(3000);
+    FastLED.clear(true);
+    esp_deep_sleep_start();
+    Log.fatal("THIS SHOULD NEVER RUN - DEEP SLEEP DOESN'T WORK!!!");
+}
+
 class MyCharCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
+        lastCharEvent = millis();
         Log.verbose("Ble characteristic onWrite callback");
         if (pCharacteristic == bCharMode) {
             Log.verbose("bCharMode");
@@ -110,6 +124,16 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
         } else {
             Log.warning("Unknown Ble characteristic onWrite callback!");
         }
+    }
+
+    void onRead(BLECharacteristic *pCharacteristic) {
+        lastCharEvent = millis();
+    }
+    void onNotify(BLECharacteristic *pCharacteristic) {
+        lastCharEvent = millis();
+    }
+    void onStatus(BLECharacteristic *pCharacteristic, Status s, uint32_t code) {
+        lastCharEvent = millis();
     }
 };
 
@@ -374,6 +398,12 @@ void setup() {
 void loop() {
     int mode = bCharMode->getValue()[0];
 
+    if (millis() > lastCharEvent + LAST_CHAR_EVENT_SLEEP_TIMEOUT) {
+        Log.notice("Time after last ble char was touched is above %dms",
+                   LAST_CHAR_EVENT_SLEEP_TIMEOUT);
+        powerOff();
+    }
+
     // Calibration
     if (bCharCalibrateCompass->getValue()[0] == 1) {
         if (millis() < calibrateBegin + CALIBRATE_COMPASS_TIME_MS) {
@@ -420,6 +450,7 @@ void loop() {
         }
     }
 
+    // Log.verbose("%d", touchRead(PIN_LED));
     switch (mode) {
         case MODE_BLANK:
             lightAllLeds(CRGB::Black);
