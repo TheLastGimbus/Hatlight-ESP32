@@ -49,6 +49,7 @@ BLECharacteristic *bCharMode;
 BLECharacteristic *bCharColorGeneral;
 BLECharacteristic *bCharNavCompassTargetBearing;
 unsigned long charNavCompassLastUpdate = 0;
+#define CHAR_NAV_COMPASS_NO_UPDATE_WARNING_TIME 15 * 1000
 BLECharacteristic *bCharCalibrateCompass;
 #define CALIBRATE_COMPASS_TIME_MS 60000  // 1 minute
 unsigned long calibrateBegin = CALIBRATE_COMPASS_TIME_MS;
@@ -209,10 +210,11 @@ float getHeadingAzimuth() {
 
     // This is low pass filter or some shit, i don't know
     //
-    // Heading is more taken from previous heading, and new values need some time to take over
-    // this makes output more stable, but also makes the whole thing kinda "float"
-    // The faster loop goes, faster the new value takes over, so i will set it to be really hard
-    // because in our case, loop isn't stopped by any delay
+    // Heading is more taken from previous heading, and new values need some
+    // time to take over this makes output more stable, but also makes the whole
+    // thing kinda "float" The faster loop goes, faster the new value takes
+    // over, so i will set it to be really hard because in our case, loop isn't
+    // stopped by any delay
     _headingFiltered = _headingFiltered * 0.95 + head * 0.05;
 
     return _headingFiltered;
@@ -509,7 +511,8 @@ void loop() {
                         CRGB(bCharColorGeneral->getValue()[0],
                              bCharColorGeneral->getValue()[1],
                              bCharColorGeneral->getValue()[2]));
-            if (millis() > charNavCompassLastUpdate + 30000) {
+            if (millis() > charNavCompassLastUpdate +
+                               CHAR_NAV_COMPASS_NO_UPDATE_WARNING_TIME) {
                 leds[0] = CRGB::DarkRed;
                 leds[NUM_LEDS - 1] = CRGB::DarkRed;
                 FastLED.show();
