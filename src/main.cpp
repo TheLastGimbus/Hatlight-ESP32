@@ -24,6 +24,7 @@
 
 CRGB leds[NUM_LEDS];
 
+float _headingFiltered = 0;
 LSM303 compass;
 #define DEFAULT_HEADING_CALIBRATION_OFFSET 20
 #define DEFAULT_MAGNETIC_DECLINATION 6
@@ -206,7 +207,15 @@ float getHeadingAzimuth() {
         head += 360;
     }
 
-    return head;
+    // This is low pass filter or some shit, i don't know
+    //
+    // Heading is more taken from previous heading, and new values need some time to take over
+    // this makes output more stable, but also makes the whole thing kinda "float"
+    // The faster loop goes, faster the new value takes over, so i will set it to be really hard
+    // because in our case, loop isn't stopped by any delay
+    _headingFiltered = _headingFiltered * 0.95 + head * 0.05;
+
+    return _headingFiltered;
 }
 
 // This DOES NOT work with negative values!!!
