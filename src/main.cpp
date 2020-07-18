@@ -39,6 +39,7 @@ LSM303 compass;
 #define BLE_CHAR_MAGNETIC_DECLINATION_UUID \
     "d887e381-54e1-4e2b-bdf5-258b84f8c28f"
 #define BLE_CHAR_COLOR_INDIVIDUAL_UUID "f4b9e311-fee0-4b8a-b677-edd617e79ee2"
+#define BLE_CHAR_POWER_OFF_MINUTES_UUID "55b57383-7678-4a66-9d94-baa7dbc7b489"
 
 // Possibly add this as other char + saved in NVS?
 unsigned long lastCharEvent = 0;
@@ -55,12 +56,19 @@ BLECharacteristic *bCharMagneticDeclination;
 // This is series of R, G, B colors of individual leds
 // 0R, 0G, 0B, 1R, 1G, 1B etc
 BLECharacteristic *bCharColorIndividual;
+BLECharacteristic *bCharPowerOffMinutes;
 
 #define MODE_BLANK 1
 #define MODE_SET_COLOR_FILL 2
 #define MODE_NAVIGATION_COMPASS_TARGET 3
 #define MODE_SET_COLORS_INDIVIDUAL 4
 
+/*
+Calibrate compass
+Run this function in loop and spin hat in all directions to get min/max
+magnetometer values In future, it would be nice to save those values in eeprom
+and only update them once in a while
+*/
 LSM303::vector<int16_t> _janusz_calibration_min = {-578, -586, -425},
                         _janusz_calibration_max = {613, 608, 542};
 LSM303::vector<int16_t> _calib_place_min = {32767, 32767, 32767},
@@ -75,12 +83,34 @@ void autoCalibrate() {
     compass.m_max.z = max(compass.m_max.z, compass.m.z);
 }
 
-void powerOff() {
+void lightOneLed(int ledIndex, CRGB oneColor = CRGB::White,
+                 CRGB restColor = CRGB::Black) {
+    for (int x = 0; x < NUM_LEDS; x++) {
+        if (x == ledIndex) {
+            leds[x] = oneColor;
+            continue;
+        }
+        leds[x] = restColor;
+    }
+    FastLED.show();
+}
+
+void lightAllLeds(CRGB color = CRGB::White) {
+    for (int x = 0; x < NUM_LEDS; x++) {
+        leds[x] = color;
+    }
+    FastLED.show();
+}
+
+void powerOff(int minutes = 0) {
     Log.notice("Going to deep sleep forever...");
     BLEDevice::deinit(true);
     lightOneLed(NUM_LEDS / 2, CRGB(126, 0, 255));  // Purple
     delay(3000);
     FastLED.clear(true);
+    if (minutes != 0) {
+        esp_sleep_enable_timer_wakeup(minutes * 60 * 1000 * 1000);
+    }
     esp_deep_sleep_start();
     Log.fatal("THIS SHOULD NEVER RUN - DEEP SLEEP DOESN'T WORK!!!");
 }
@@ -121,6 +151,18 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
             Log.verbose("bCharMagneticDeclination");
         } else if (pCharacteristic == bCharColorIndividual) {
             Log.verbose("bCharColorIndividual");
+        } else if (pCharacteristic == bCharPowerOffMinutes) {
+            Log.verbose("bCharPowerOffMinutes");
+            int minutes = pCharacteristic->getValue()[0];
+            if (minutes == 0) {
+                Log.verbose("0 minutes set - no sleep then :)");
+            } else if (minutes == 255) {
+                Log.verbose("255 minutes set - so sleep forever...");
+                powerOff();
+            } else {
+                Log.verbose("%d minutes set - going to sleep for such time...");
+                powerOff(minutes);
+            }
         } else {
             Log.warning("Unknown Ble characteristic onWrite callback!");
         }
@@ -136,32 +178,6 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
         lastCharEvent = millis();
     }
 };
-
-/*
-Calibrate compass
-Run this function in loop and spin hat in all directions to get min/max
-magnetometer values In future, it would be nice to save those values in eeprom
-and only update them once in a while
-*/
-
-void lightOneLed(int ledIndex, CRGB oneColor = CRGB::White,
-                 CRGB restColor = CRGB::Black) {
-    for (int x = 0; x < NUM_LEDS; x++) {
-        if (x == ledIndex) {
-            leds[x] = oneColor;
-            continue;
-        }
-        leds[x] = restColor;
-    }
-    FastLED.show();
-}
-
-void lightAllLeds(CRGB color = CRGB::White) {
-    for (int x = 0; x < NUM_LEDS; x++) {
-        leds[x] = color;
-    }
-    FastLED.show();
-}
 
 // This is TODO in future, if I every finally find method to get true heading
 // that just FUCKING WORKS
@@ -381,6 +397,15 @@ void setup() {
         255, 0,   217   //
     };
     bCharColorIndividual->setValue(colors, size_t(21));
+
+    Log.verbose("Setting bCharPowerOffMinutes...");
+    bCharPowerOffMinutes = bService->createCharacteristic(
+        BLE_CHAR_POWER_OFF_MINUTES_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
+            BLECharacteristic::PROPERTY_NOTIFY);
+    bCharPowerOffMinutes->setCallbacks(new MyCharCallbacks());
+    int zero = 0;
+    bCharPowerOffMinutes->setValue(zero);
 
     bService->start();
     Log.verbose("Star advertising...");
